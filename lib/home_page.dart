@@ -9,6 +9,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  TextEditingController titleController = TextEditingController();
+  TextEditingController descController = TextEditingController();
   List<Map<String, dynamic>> allNotes = [];
   DBHelper? dbRef;
 
@@ -42,23 +44,77 @@ class _HomePageState extends State<HomePage> {
       body: allNotes.isNotEmpty
           ? ListView.builder(
               itemBuilder: (_, index) {
-                ///All note should be visible here
                 return ListTile(
-                  leading: Text('${allNotes[index][DBHelper.COLUMN_NOTE_SNO]}'),
+                  leading: Text('${index+1}'),
                   title: Text(allNotes[index][DBHelper.COLUMN_NOTE_TITLE]),
                   subtitle: Text(allNotes[index][DBHelper.COLUMN_NOTE_DESC]),
+                  trailing: SizedBox(
+                    width: 100,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            titleController.text =
+                                allNotes[index][DBHelper.COLUMN_NOTE_TITLE];
+                            descController.text =
+                                allNotes[index][DBHelper.COLUMN_NOTE_DESC];
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              builder: (context) {
+                                return bottomSheetView(
+                                  context: context,
+                                  onNoteAdded: getNotes,
+                                  isUpdate: true,
+                                  sno: allNotes[index][DBHelper.COLUMN_NOTE_SNO],
+                                  titleController: titleController,
+                                  descController: descController,
+                                );
+                              },
+                            );
+                          },
+                          child: Icon(Icons.edit, color: Colors.black),
+                        ),
+                        SizedBox(width: 10),
+                        InkWell(
+                          onTap: () async {
+                            bool deleted = await dbRef!.deleteNote(
+                              sno: allNotes[index][DBHelper.COLUMN_NOTE_SNO],
+                            );
+                            if (deleted) {
+                              getNotes();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Note deleted")),
+                              );
+                            }
+                          },
+                          child: Icon(Icons.delete, color: Colors.red),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
               itemCount: allNotes.length,
             )
           : Center(child: Text("No Notes yet!!")),
-
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
+          titleController.clear();
+          descController.clear();
           showModalBottomSheet(
             context: context,
+            isScrollControlled: true,
             builder: (context) {
-              return BottomSheetView(onNoteAdded: getNotes);
+              return bottomSheetView(
+                context: context,
+                onNoteAdded: getNotes,
+                isUpdate: false,
+                sno: 0,
+                titleController: titleController,
+                descController: descController,
+              );
             },
           );
         },
@@ -68,113 +124,111 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class BottomSheetView extends StatefulWidget {
-  final VoidCallback onNoteAdded; // Callback to notify HomePage
+Widget bottomSheetView({
+  required BuildContext context,
+  required VoidCallback onNoteAdded,
+  required bool isUpdate,
+  required int sno,
+  required TextEditingController titleController,
+  required TextEditingController descController,
+}) {
+  DBHelper dbRef = DBHelper.getInstance;
 
-  const BottomSheetView({super.key, required this.onNoteAdded});
-
-  @override
-  State<StatefulWidget> createState() => _BottomSheetViewState();
-}
-
-class _BottomSheetViewState extends State<BottomSheetView> {
-  TextEditingController titleController = TextEditingController();
-  TextEditingController descController = TextEditingController();
-  DBHelper? dbRef;
-
-  @override
-  void initState() {
-    super.initState();
-    dbRef = DBHelper.getInstance;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(11),
-      width: double.infinity,
-      child: Column(
-        children: [
-          Text(
-            "Add Note",
-            style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 15),
-          inputText(
-            controller: titleController,
-            hint: "Enter Title",
-            label: "Title*",
-            maxlines: 1,
-          ),
-          SizedBox(height: 15),
-          inputText(
-            controller: descController,
-            hint: "Enter Description here",
-            label: "Desc*",
-            maxlines: 4,
-          ),
-          SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade200,
-                    side: BorderSide(width: 1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(11),
+  return Padding(
+    padding: EdgeInsets.only(
+      bottom: MediaQuery.of(context).viewInsets.bottom, // Adjusts for keyboard
+    ),
+    child: SingleChildScrollView(
+      child: Container(
+        padding: EdgeInsets.all(11),
+        width: double.infinity,
+        child: Column(
+          mainAxisSize: MainAxisSize.min, // Makes the bottom sheet compact
+          children: [
+            Text(
+              isUpdate ? 'Update' : "Add Note",
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 15),
+            inputText(
+              controller: titleController,
+              hint: "Enter Title",
+              label: "Title*",
+              maxlines: 1,
+            ),
+            SizedBox(height: 15),
+            inputText(
+              controller: descController,
+              hint: "Enter Description here",
+              label: "Desc*",
+              maxlines: 4,
+            ),
+            SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade200,
+                      side: BorderSide(width: 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(11),
+                      ),
                     ),
-                  ),
-                  onPressed: () async {
-                    var title = titleController.text;
-                    var desc = descController.text;
-                    if (title.isNotEmpty && desc.isNotEmpty) {
-                      bool check = await dbRef!.addNote(
-                        mTitle: title,
-                        mDesc: desc,
-                      );
-                      if (check && mounted) {
-                        widget
-                            .onNoteAdded(); // Call the callback to refresh HomePage
-                        Navigator.pop(context);
+                    onPressed: () async {
+                      var title = titleController.text;
+                      var desc = descController.text;
+                      if (title.isNotEmpty && desc.isNotEmpty) {
+                        bool check = isUpdate
+                            ? await dbRef.updateNote(
+                                mTitle: title,
+                                mDesc: desc,
+                                sno: sno,
+                              )
+                            : await dbRef.addNote(mTitle: title, mDesc: desc);
+                        if (check) {
+                          onNoteAdded();
+                          Navigator.pop(context);
+                        }
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Please fill all the required blanks"),
+                          ),
+                        );
                       }
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Please fill all the required blanks"),
-                        ),
-                      );
-                    }
-                  },
-                  child: Text(
-                    "Add Text",
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade200,
-                    side: BorderSide(width: 1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(11),
+                    },
+                    child: Text(
+                      isUpdate ? 'Update Note' : "Add Note",
+                      style: TextStyle(color: Colors.black),
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: Text("Cancel", style: TextStyle(color: Colors.black)),
                 ),
-              ),
-            ],
-          ),
-        ],
+                SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade200,
+                      side: BorderSide(width: 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: Text("Cancel", style: TextStyle(color: Colors.black)),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20), // Extra space to ensure scrolling works
+          ],
+        ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 Widget inputText({
@@ -187,8 +241,8 @@ Widget inputText({
     controller: controller,
     maxLines: maxlines,
     decoration: InputDecoration(
-      hintText: hint, // Use hintText instead of hint
-      labelText: label, // Use labelText instead of label
+      hintText: hint,
+      labelText: label,
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: const Color.fromARGB(255, 71, 140, 205)),
